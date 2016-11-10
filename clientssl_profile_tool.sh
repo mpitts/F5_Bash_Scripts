@@ -1,31 +1,40 @@
 #!/bin/bash
 
-# This script is used to change all VIPs with a certain client-ssl profile to a different client-ssl profile.
+# This script helps work with managing Virtual Servers' Client-SSL profiles in
+# an environment where there is a many to one relationship between Virtual
+# Servers and Client-SSL profiles. The primary purpose of the functions provided
+# is to deal with scenarios where you will be updating a certificate or clientssl
+# profile and need to identify all potentially impacted Virtual Servers.
+
+# The following functions are available:
+# 1) List all the Client-SSL profiles using a specified certificate (identified
+# by providing the certificate filename as it exists on the F5).
+# 2) List all Virtual Servers configured to use the specified Client-SSL profile.
+# 3) Modify all Virtual Servers using a specified Client-SSL profile to use a
+# different specified Client-SSL profile.
 
 debug=1
 host=$(echo $HOSTNAME | awk -F"." '{ print $1 }')
 
-echo "Choose the function you would like to execute:"
-echo "1. List all Client-SSL profiles using a specified certificate."
-echo "2. List all VIPs using a specified Client-SSL profile."
-echo "3. Change all VIPs using a specified Client-SSL profile to a target Client-SSL profile."
+echo "What would you like to do?:"
+echo "1. List all Client-SSL profiles using the specified certificate."
+echo "2. List all Virtual Serverss using the specified Client-SSL profile."
+echo "3. Modify all Virtual Serverss using the specified Client-SSL profile to a different specified Client-SSL profile."
 echo " "
 read -r -p "Type the number of the function to begin [ENTER]: " function
 echo " "
 
 if [ "$debug" == 1 ]; then echo $(date +%Y-%m-%d_%H:%M:%S)" - "$host" - Choose to execute function: "$function >> /var/tmp/clientssl_profile_tool_debug.log; fi;
 
+# 1) List all the Client-SSL profiles using a specified certificate:
 if [[ "$function" == "1" ]]; then
-  # 1. List all Client-SSL profiles using a specified certificate.
-
   # -- Prompt for certificate:
-  read -r -p "Name of certificate (example: wildcard-aries.crt) [ENTER]: " search_certificate
+  read -r -p "Name of certificate (example: certificate.crt) [ENTER]: " search_certificate
 
   echo y | tmsh list ltm profile client-ssl cert | grep -B 1 "$search_certificate" | grep "ltm profile" | awk -F" " '{ print $4 }'
 
+# 2) List all Virtual Servers configured to use the specified Client-SSL profile:
 elif [[ "$function" == "2" ]]; then
-  # 2. List all VIPs using a specified Client-SSL profile.
-
   # -- Prompt for Client-SSL profile:
   read -r -p "Name of Client-SSL profile [ENTER]: " search_profile
 
@@ -37,30 +46,29 @@ elif [[ "$function" == "2" ]]; then
     fi
   done
 
+# 3) Modify all Virtual Servers using a specified Client-SSL profile to use a different specified Client-SSL profile.
 elif [[ "$function" == "3" ]]; then
-  # 3. Change all VIPs using a specified Client-SSL profile to a target Client-SSL profile.
-
   touch /var/tmp/clientssl_profile_change_script.txt
   touch /var/tmp/clientssl_profile_backout_script.txt
 
-  # -- Cycle through all VIPs and look for ones using the specified client-ssl profile.
-  # -- Create change and backout scripts for VIPs using the specified client-ssl profile.
+  # -- Cycle through all virtual servers and look for ones using the specified clientssl profile.
+  # -- Create change and backout scripts for virtual servers using the specified clientssl profile.
 
   if [ "$debug" == 1 ]; then echo $(date +%Y-%m-%d_%H:%M:%S)" - "$host" - Begin execution of Client-SSL profile changer." >> /var/tmp/clientssl_profile_tool_debug.log; fi;
 
-  # -- Prompt for current client-ssl profile.
+  # -- Prompt for current clientssl profile.
   read -r -p "Name of current Client-SSL profile being replaced [ENTER]: " profile_change
-  # -- Prompt for target client-ssl profile.
+  # -- Prompt for target clientssl profile.
   read -r -p "Name of target Client-SSL profile that is replacing the current profile [ENTER]: " profile_target
 
   # The script will build a change and backout script and will give the option of executing the change script if desired:
   # -- Change script is stored at "/var/tmp/clientssl_profile_change_script_HOSTNAME-DATE.txt".
   # -- Backout script is stored at "/var/tmp/clientssl_profile_backout_script_HOSTNAME-DATE.txt".
-  read -r -p "Do you want the script to execute the changes to update the VIP Client-SSL profiles (yes/no)[ENTER]? " execute
+  read -r -p "Do you want to execute the change script to update the Virtual Server Client-SSL profiles (yes/no)[ENTER]? " execute
   if [ "$debug" == 1 ]; then echo $(date +%Y-%m-%d_%H:%M:%S)" - "$host" - Choose to execute change script: "$execute >> /var/tmp/clientssl_profile_tool_debug.log; fi;
 
   # Check for VIPs using the specified client-ssl profile:
-  if [ "$debug" == 1 ]; then echo $(date +%Y-%m-%d_%H:%M:%S)" - "$host" - Begin audit of VIPs using the '"$profile_change"' profile." >> /var/tmp/clientssl_profile_tool_debug.log; fi;
+  if [ "$debug" == 1 ]; then echo $(date +%Y-%m-%d_%H:%M:%S)" - "$host" - Begin audit of Virtual Servers using the '"$profile_change"' profile." >> /var/tmp/clientssl_profile_tool_debug.log; fi;
   for vip in `echo y | tmsh list ltm virtual profiles | grep -B 20 "$profile_change" | grep "ltm virtual" | awk -F" " '{ print $3 }'`; do
     profile_configured=$(tmsh list ltm virtual $vip profiles | grep "$profile_change" | awk -F" " '{ print $1 }')
     if [ "$profile_change" == "$profile_configured" ]; then
